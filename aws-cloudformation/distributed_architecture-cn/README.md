@@ -6,7 +6,7 @@
 
 * This section contains sample AWS Cloudformation templates that demonstrates how to create distributed architecture using AWS Gateway Load Balancer and Gateway Load Balancer Endpoints from templates that are written in YAML.
 
-![](images/gwlb_distributed_architecture_cn.jpg)
+![](images/gwlb_distributed_architecture_cn.png)
 
  * **Launch GWLB Appliance VPC Sample template before launching GWLB Spoke VPC Sample template.**
    * Appliance creates VPC Endpoint Service Name required for the Spoke VPC. Spoke VPC creates Gateway Load Balancer Endpoint using the VPC Endpoint Service created by Appliance VPC 
