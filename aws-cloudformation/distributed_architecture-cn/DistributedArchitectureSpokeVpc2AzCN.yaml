@@ -22,7 +22,7 @@ Description: >-
     
   **WARNING** This template creates one or more Amazon EC2 instances and
   Gateway Load Balancer endpoints and interface endpoints. You will be billed
-  or the AWS resources used if you create a stack from this template.
+  or the AWS resources used if you create a stack from this template.·
 
 Metadata:
   AWS::CloudFormation::Interface:
@@ -37,6 +37,8 @@ Metadata:
           - AvailabilityZone2
           - ApplicationSubnet2Cidr
           - GwlbeSubnet2Cidr
+          - ProtectedSubnet1Cidr
+          - ProtectedSubnet2Cidr
       - Label:
           default: Application Configuration
         Parameters:
@@ -53,6 +55,13 @@ Metadata:
           default: Gateway Load Balancer Endpoint Configuration
         Parameters:
           - ServiceName
+      - Label:
+          default: Application Load Balancer Configuration
+        Parameters:
+          - AlbName
+          - TargetGroupName
+          - HealthPort
+          - HealthProtocol   
 
     ParameterLabels:
       VpcCidr:
@@ -82,7 +91,19 @@ Metadata:
       CreateBastionCondition:
         default: Create Bastion Setup Condition
       ServiceName:
-        default: The name of the endpoint service to create gateway load balancer endpoint for        
+        default: The name of the endpoint service to create gateway load balancer endpoint for
+      AlbName:
+        default: Application Load Balancer Name
+      TargetGroupName:
+        default: Target Group Name
+      HealthPort:
+        default: Health Check Port
+      HealthProtocol:
+        default: Health Check Protocol     
+      ProtectedSubnet1Cidr:
+        default: Network CIDR for Protected Subnet 1      
+      ProtectedSubnet2Cidr:
+        default: Network CIDR for Protected Subnet 2     
 
 Parameters:
   VpcCidr:
@@ -166,6 +187,47 @@ Parameters:
       Example service name: com.amazonaws.vpce.us-west-2.vpce-svc-0a76331bc5d6cc4cd
     Type: String
     ConstraintDescription: Must be a valid service name    
+  AlbName:
+    Description: >-
+      Application Load Balancer name. This name must be unique within your AWS 
+      account and can have a maximum of 32 alphanumeric characters and 
+      hyphens. A name cannot begin or end with a hyphen.
+    Type: String
+    Default: alb1
+    ConstraintDescription: Must be a valid ALB Name
+  TargetGroupName:
+    Description: Target Group Name
+    Type: String
+    Default: web-tg-1
+    ConstraintDescription: Must be a valid target group name
+  HealthProtocol:
+    Description: >-
+      The protocol the appliane gateway uses when performing health checks on
+      targets. For Application Load Balancers, the default is HTTP.
+    Type: String
+    Default: HTTP
+    AllowedValues: ['TCP', 'HTTP', 'HTTPS']
+    ConstraintDescription: Must be a valid health check protocol
+  HealthPort:
+    Description: >- 
+      The port the load balancer uses when performing health checks
+      on targets. The default is traffic-port, which is the port on
+      which each target receives traffic from the load balancer.
+    Type: String
+    Default: '80'
+    ConstraintDescription: Must be a valid health check port 
+  ProtectedSubnet1Cidr:
+    AllowedPattern: "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\\/(1[6-9]|2[0-8]))$"
+    Default: 10.0.0.64/27
+    Description: CIDR block for the Protected Subnet 1 located in Availability Zone 1
+    Type: String
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
+  ProtectedSubnet2Cidr:
+    AllowedPattern: "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\\/(1[6-9]|2[0-8]))$"
+    Default: 10.0.0.96/27
+    Description: CIDR block for the Protected Subnet 1 located in Availability Zone 2
+    Type: String
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
 
 Conditions:
   CreateBastion: !Equals
@@ -243,6 +305,28 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub "gwlbe-subnet-2-${AWS::StackName}"
+  
+  ProtectedSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Ref AvailabilityZone1
+      CidrBlock: !Ref ProtectedSubnet1Cidr
+      VpcId: !Ref Vpc
+      MapPublicIpOnLaunch: "true"
+      Tags:
+        - Key: Name
+          Value: !Sub "protected-subnet-1-${AWS::StackName}"
+
+  ProtectedSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Ref AvailabilityZone2
+      CidrBlock: !Ref ProtectedSubnet2Cidr
+      VpcId: !Ref Vpc
+      MapPublicIpOnLaunch: "true"
+      Tags:
+        - Key: Name
+          Value: !Sub "protected-subnet-2-${AWS::StackName}"
 
 # Route Table and subnet association:
   # AZ 1:
@@ -282,6 +366,20 @@ Resources:
       SubnetId: !Ref GwlbeSubnet1
       RouteTableId: !Ref GwlbeRouteTable1
   
+  ProtectedRouteTable1:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub "protected-rtb-1-${AWS::StackName}"
+
+  ProtectedSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref ProtectedSubnet1
+      RouteTableId: !Ref ProtectedRouteTable1
+  
   # AZ 2:
   ApplicationRouteTable2:
     Type: AWS::EC2::RouteTable
@@ -318,6 +416,20 @@ Resources:
     Properties:
       SubnetId: !Ref GwlbeSubnet2
       RouteTableId: !Ref GwlbeRouteTable2
+
+  ProtectedRouteTable2:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub "protected-rtb-2-${AWS::StackName}"
+
+  ProtectedSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref ProtectedSubnet2
+      RouteTableId: !Ref ProtectedRouteTable2
   
   # Ingress Route Table and association:
   IgwRouteTable1:
@@ -481,6 +593,7 @@ Resources:
   Application1:
     DependsOn:
     - AddRoute1ApplicationRouteTable1
+    - AddRoute2ProtectedRouteTable2
     - AddApplication1IgwRouteTable
     Type: AWS::EC2::Instance
     Properties:
@@ -539,6 +652,7 @@ Resources:
   Application2:
     DependsOn:
     - AddRoute2ApplicationRouteTable2
+    - AddRoute2ProtectedRouteTable2
     - AddApplication2IgwRouteTable
     Type: AWS::EC2::Instance
     Properties:
@@ -654,19 +768,19 @@ Resources:
   # default route with GWLBE 1 as target to application-rtb-1
   AddRoute1ApplicationRouteTable1:
     Type: AWS::EC2::Route
-    DependsOn: GwlbVpcEndpoint1
+    DependsOn: NATGateway1
     Properties:
       DestinationCidrBlock: !Ref AccessLocation
-      VpcEndpointId: !Ref GwlbVpcEndpoint1
+      NatGatewayId: !Ref NATGateway1
       RouteTableId: !Ref ApplicationRouteTable1
   
   # default route with GWLBE 2 as target to application-rtb-2
   AddRoute2ApplicationRouteTable2:
     Type: AWS::EC2::Route
-    DependsOn: GwlbVpcEndpoint2
+    DependsOn: NATGateway2
     Properties:
       DestinationCidrBlock: !Ref AccessLocation
-      VpcEndpointId: !Ref GwlbVpcEndpoint2
+      NatGatewayId: !Ref NATGateway2
       RouteTableId: !Ref ApplicationRouteTable2
 
   # GWLBE(s) as target to ingress route table:
@@ -674,7 +788,7 @@ Resources:
     Type: AWS::EC2::Route
     DependsOn: GwlbVpcEndpoint1
     Properties:
-      DestinationCidrBlock: !Ref ApplicationSubnet1Cidr
+      DestinationCidrBlock: !Ref ProtectedSubnet1Cidr
       VpcEndpointId: !Ref GwlbVpcEndpoint1
       RouteTableId: !Ref IgwRouteTable1
 
@@ -682,9 +796,102 @@ Resources:
     Type: AWS::EC2::Route
     DependsOn: GwlbVpcEndpoint2
     Properties:
-      DestinationCidrBlock: !Ref ApplicationSubnet2Cidr
+      DestinationCidrBlock: !Ref ProtectedSubnet2Cidr
       VpcEndpointId: !Ref GwlbVpcEndpoint2
       RouteTableId: !Ref IgwRouteTable1
+  
+  # default route with GWLBE 1 as target to protected-rtb-1
+  AddRoute1ProtectedRouteTable1:
+    Type: AWS::EC2::Route
+    DependsOn: GwlbVpcEndpoint1
+    Properties:
+      DestinationCidrBlock: !Ref AccessLocation
+      VpcEndpointId: !Ref GwlbVpcEndpoint1
+      RouteTableId: !Ref ProtectedRouteTable1
+  
+  # default route with GWLBE 2 as target to protected-rtb-2
+  AddRoute2ProtectedRouteTable2:
+    Type: AWS::EC2::Route
+    DependsOn: GwlbVpcEndpoint2
+    Properties:
+      DestinationCidrBlock: !Ref AccessLocation
+      VpcEndpointId: !Ref GwlbVpcEndpoint2
+      RouteTableId: !Ref ProtectedRouteTable2
+  
+  # Application Load Balancer (ALB), Target Group, Listener
+  # ALB:
+  Alb:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Ref AlbName
+      Type: application
+      SecurityGroups:
+        - !Ref ApplicationSg
+      Subnets:
+        - !Ref ProtectedSubnet1
+        - !Ref ProtectedSubnet2
+      Tags:
+      - Key: Name
+        Value: !Sub "alb-1-${AWS::StackName}"
+  
+  # Target Group:
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Ref TargetGroupName
+      Port: 80
+      Protocol: HTTP
+      TargetGroupAttributes:
+      - Key: deregistration_delay.timeout_seconds
+        Value: 20
+      VpcId: !Ref Vpc
+      HealthCheckPort: !Ref HealthPort
+      HealthCheckProtocol: !Ref HealthProtocol
+      TargetType: instance
+      Targets:
+        - Id: !Ref Application1
+        - Id: !Ref Application2
+      Tags:
+      - Key: Name
+        Value: !Sub "web-tg-1-${AWS::StackName}"
+  
+  # Listener:
+  Listener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+      - Type: forward
+        TargetGroupArn: !Ref TargetGroup
+      Port: 80
+      Protocol: "HTTP"
+      LoadBalancerArn: !Ref Alb
+
+  # NAT Gateway
+  NATGatewayEIP1:
+     Type: AWS::EC2::EIP
+     Properties:
+        Domain: vpc
+  NATGateway1:
+   Type: AWS::EC2::NatGateway
+   Properties:
+      AllocationId: !GetAtt NATGatewayEIP1.AllocationId
+      SubnetId: !Ref ProtectedSubnet1
+      Tags:
+      - Key: Name
+        Value: !Sub "natgw-1-${AWS::StackName}"
+
+  NATGatewayEIP2:
+     Type: AWS::EC2::EIP
+     Properties:
+        Domain: vpc
+  NATGateway2:
+   Type: AWS::EC2::NatGateway
+   Properties:
+      AllocationId: !GetAtt NATGatewayEIP2.AllocationId
+      SubnetId: !Ref ProtectedSubnet2
+      Tags:
+      - Key: Name
+        Value: !Sub "natgw-2-${AWS::StackName}"
 
 # Outputs:
 Outputs:
