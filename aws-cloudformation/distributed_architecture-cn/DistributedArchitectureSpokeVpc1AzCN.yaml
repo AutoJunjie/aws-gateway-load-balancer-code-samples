@@ -483,14 +483,7 @@ Resources:
       AllowedPrincipals:
         - !Ref AwsAccountToWhitelist
       ServiceId: !Ref VpcEndpointService
-
-  VpcEndpointServicePermissions:
-    Type: AWS::EC2::VPCEndpointServicePermissions
-    Properties:
-      AllowedPrincipals:
-        - !Ref AwsAccountToWhitelist
-      ServiceId: !Ref VpcEndpointService
-
+      
   # Lambda Role and Policy and Log Group for describing VPC endpoint service:
   LambdaExecutionRole:
     Type: AWS::IAM::Role
