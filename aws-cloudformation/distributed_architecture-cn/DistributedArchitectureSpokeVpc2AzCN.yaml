@@ -571,7 +571,7 @@ Resources:
     Properties:
       RoleName: !Sub "appliance-role-${AWS::StackName}"
       ManagedPolicyArns:
-        - "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"    
+        - "arn:aws-cn:iam::aws:policy/AmazonSSMManagedInstanceCore"    
       AssumeRolePolicyDocument:
         Statement:
           - Effect: Allow
